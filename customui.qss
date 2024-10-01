@@ -1,0 +1,4 @@
+QLineEdit, QTextEdit, QPushButton, QLabel, QWidget {
+    color: #ffffff;
+    background-color: #000000;
+}
