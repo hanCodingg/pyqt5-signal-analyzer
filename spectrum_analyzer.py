@@ -24,6 +24,7 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import soapy
+import os
 import sip
 
 
@@ -64,8 +65,9 @@ class spectrum_analyzer(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.rf_gain = rf_gain = 10
-        self.if_gain = if_gain = 10
-        self.frequency = frequency = 2410e6
+        self.if_gain = if_gain = 15
+        self.ftt_size = ftt_size = 4096
+        self.frequency = frequency = 433e6
         self.bandwidth = bandwidth = 20e6
 
         ##################################################
@@ -73,14 +75,11 @@ class spectrum_analyzer(gr.top_block, Qt.QWidget):
         ##################################################
 
         self._rf_gain_range = qtgui.Range(0, 62, 1, 10, 200)
-        self._rf_gain_win = qtgui.RangeWidget(self._rf_gain_range, self.set_rf_gain, "'rf_gain'", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._rf_gain_win = qtgui.RangeWidget(self._rf_gain_range, self.set_rf_gain, "RF Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._rf_gain_win)
-        self._if_gain_range = qtgui.Range(0, 40, 1, 10, 200)
-        self._if_gain_win = qtgui.RangeWidget(self._if_gain_range, self.set_if_gain, "'if_gain'", "counter_slider", float, QtCore.Qt.Horizontal)
+        self._if_gain_range = qtgui.Range(0, 42, 1, 15, 200)
+        self._if_gain_win = qtgui.RangeWidget(self._if_gain_range, self.set_if_gain, "IF Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._if_gain_win)
-        self._frequency_range = qtgui.Range(2.4e9, 2.5e9, 1000, 2410e6, 200)
-        self._frequency_win = qtgui.RangeWidget(self._frequency_range, self.set_frequency, "'frequency'", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._frequency_win)
         self.soapy_hackrf_source_0 = None
         dev = 'driver=hackrf'
         stream_args = ''
@@ -95,36 +94,104 @@ class spectrum_analyzer(gr.top_block, Qt.QWidget):
         self.soapy_hackrf_source_0.set_gain(0, 'AMP', True)
         self.soapy_hackrf_source_0.set_gain(0, 'LNA', min(max(if_gain, 0.0), 40.0))
         self.soapy_hackrf_source_0.set_gain(0, 'VGA', min(max(rf_gain, 0.0), 62.0))
-        self.qtgui_sink_x_0 = qtgui.sink_c(
-            1024, #fftsize
-            window.WIN_HAMMING, #wintype
+        self.qtgui_waterfall_sink_x_0 = qtgui.waterfall_sink_c(
+            ftt_size, #size
+            window.WIN_BLACKMAN_hARRIS, #wintype
             frequency, #fc
             bandwidth, #bw
-            "Spectrum Analyzer", #name
-            True, #plotfreq
-            True, #plotwaterfall
-            True, #plottime
-            True, #plotconst
+            "", #name
+            1, #number of inputs
             None # parent
         )
-        self.qtgui_sink_x_0.set_update_time(1.0/10)
-        self._qtgui_sink_x_0_win = sip.wrapinstance(self.qtgui_sink_x_0.qwidget(), Qt.QWidget)
+        self.qtgui_waterfall_sink_x_0.set_update_time(0.05)
+        self.qtgui_waterfall_sink_x_0.enable_grid(True)
+        self.qtgui_waterfall_sink_x_0.enable_axis_labels(True)
 
-        self.qtgui_sink_x_0.enable_rf_freq(True)
+        self.qtgui_waterfall_sink_x_0.disable_legend()
 
-        self.top_layout.addWidget(self._qtgui_sink_x_0_win)
+
+        labels = ['', '', '', '', '',
+                  '', '', '', '', '']
+        colors = [6, 0, 0, 0, 0,
+                  0, 0, 0, 0, 0]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_waterfall_sink_x_0.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_waterfall_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_waterfall_sink_x_0.set_color_map(i, colors[i])
+            self.qtgui_waterfall_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self.qtgui_waterfall_sink_x_0.set_intensity_range(-140, 10)
+
+        self._qtgui_waterfall_sink_x_0_win = sip.wrapinstance(self.qtgui_waterfall_sink_x_0.qwidget(), Qt.QWidget)
+
+        self.top_grid_layout.addWidget(self._qtgui_waterfall_sink_x_0_win, 2, 0, 2, 1)
+        for r in range(2, 4):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(0, 1):
+            self.top_grid_layout.setColumnStretch(c, 1)
+        self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
+            ftt_size, #size
+            window.WIN_BLACKMAN_hARRIS, #wintype
+            frequency, #fc
+            bandwidth, #bw
+            "", #name
+            1,
+            None # parent
+        )
+        self.qtgui_freq_sink_x_0.set_update_time(0.05)
+        self.qtgui_freq_sink_x_0.set_y_axis((-140), 10)
+        self.qtgui_freq_sink_x_0.set_y_label('Amplitude', 'dBm')
+        self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, 0.0, 0, "")
+        self.qtgui_freq_sink_x_0.enable_autoscale(False)
+        self.qtgui_freq_sink_x_0.enable_grid(True)
+        self.qtgui_freq_sink_x_0.set_fft_average(1.0)
+        self.qtgui_freq_sink_x_0.enable_axis_labels(True)
+        self.qtgui_freq_sink_x_0.enable_control_panel(False)
+        self.qtgui_freq_sink_x_0.set_fft_window_normalized(False)
+
+        self.qtgui_freq_sink_x_0.disable_legend()
+
+
+        labels = ['', '', '', '', '',
+            '', '', '', '', '']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ["green", "red", "green", "black", "cyan",
+            "magenta", "yellow", "dark red", "dark green", "dark blue"]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_freq_sink_x_0.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_freq_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_freq_sink_x_0.set_line_width(i, widths[i])
+            self.qtgui_freq_sink_x_0.set_line_color(i, colors[i])
+            self.qtgui_freq_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
+        self.top_grid_layout.addWidget(self._qtgui_freq_sink_x_0_win, 0, 0, 2, 1)
+        for r in range(0, 2):
+            self.top_grid_layout.setRowStretch(r, 1)
+        for c in range(0, 1):
+            self.top_grid_layout.setColumnStretch(c, 1)
         self.blocks_throttle2_0 = blocks.throttle( gr.sizeof_gr_complex*1, bandwidth, True, 0 if "auto" == "auto" else max( int(float(0.1) * bandwidth) if "auto" == "time" else int(0.1), 1) )
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.blocks_throttle2_0, 0), (self.qtgui_sink_x_0, 0))
+        self.connect((self.blocks_throttle2_0, 0), (self.qtgui_freq_sink_x_0, 0))
+        self.connect((self.blocks_throttle2_0, 0), (self.qtgui_waterfall_sink_x_0, 0))
         self.connect((self.soapy_hackrf_source_0, 0), (self.blocks_throttle2_0, 0))
 
-    def get_widget(self):
-        return self._qtgui_sink_x_0_win
-    
+
     def closeEvent(self, event):
         self.settings = Qt.QSettings("GNU Radio", "spectrum_analyzer")
         self.settings.setValue("geometry", self.saveGeometry())
@@ -132,6 +199,16 @@ class spectrum_analyzer(gr.top_block, Qt.QWidget):
         self.wait()
 
         event.accept()
+
+    def setStyleSheetFromFile(self, filename):
+        try:
+            if not os.path.exists(filename):
+                filename = os.path.join(
+                    gr.prefix(), "share", "gnuradio", "themes", filename)
+            with open(filename) as ss:
+                self.setStyleSheet(ss.read())
+        except Exception as e:
+            self.logger.error(f"setting stylesheet: {str(e)}")
 
     def get_rf_gain(self):
         return self.rf_gain
@@ -147,12 +224,19 @@ class spectrum_analyzer(gr.top_block, Qt.QWidget):
         self.if_gain = if_gain
         self.soapy_hackrf_source_0.set_gain(0, 'LNA', min(max(self.if_gain, 0.0), 40.0))
 
+    def get_ftt_size(self):
+        return self.ftt_size
+
+    def set_ftt_size(self, ftt_size):
+        self.ftt_size = ftt_size
+
     def get_frequency(self):
         return self.frequency
 
     def set_frequency(self, frequency):
         self.frequency = frequency
-        self.qtgui_sink_x_0.set_frequency_range(self.frequency, self.bandwidth)
+        self.qtgui_freq_sink_x_0.set_frequency_range(self.frequency, self.bandwidth)
+        self.qtgui_waterfall_sink_x_0.set_frequency_range(self.frequency, self.bandwidth)
         self.soapy_hackrf_source_0.set_frequency(0, self.frequency)
 
     def get_bandwidth(self):
@@ -161,7 +245,8 @@ class spectrum_analyzer(gr.top_block, Qt.QWidget):
     def set_bandwidth(self, bandwidth):
         self.bandwidth = bandwidth
         self.blocks_throttle2_0.set_sample_rate(self.bandwidth)
-        self.qtgui_sink_x_0.set_frequency_range(self.frequency, self.bandwidth)
+        self.qtgui_freq_sink_x_0.set_frequency_range(self.frequency, self.bandwidth)
+        self.qtgui_waterfall_sink_x_0.set_frequency_range(self.frequency, self.bandwidth)
         self.soapy_hackrf_source_0.set_sample_rate(0, self.bandwidth)
 
 
@@ -175,6 +260,7 @@ def main(top_block_cls=spectrum_analyzer, options=None):
 
     tb.start()
 
+    tb.setStyleSheetFromFile("/home/antidrone/Documents/pyqt5/ADS-B and SA/SignalPro Signal Analyzer/customui.qss")
     tb.show()
 
     def sig_handler(sig=None, frame=None):
@@ -194,3 +280,4 @@ def main(top_block_cls=spectrum_analyzer, options=None):
 
 if __name__ == '__main__':
     main()
+
