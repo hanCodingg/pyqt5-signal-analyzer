@@ -92,6 +92,7 @@ class LoginWindows(QWidget):
         self.main.show()
         self.close()
 
+# Main screen section
 class MainWindows(QWidget):
     def __init__(self):
         super(MainWindows, self).__init__()
@@ -103,19 +104,42 @@ class MainWindows(QWidget):
         print("File 'sa_main.ui' executed.")
         self.setWindowTitle("SignalPro Signal Analyzer")
         self.spectrum_analyzer_widget = self.findChild(QWidget, "widget_spectrumAnalyzer")
+        self.frequency_display = self.findChild(QLabel, "label_frequencyText")
+        self.frequency_lineinput = self.findChild(QLineEdit, "lineEdit_setFrequency")
+        self.frequency_lineinput.returnPressed.connect(self.set_frequency_input)
         self.start_spectrum_analyzer()
+        self.frequency_timer = QTimer()
+        self.frequency_timer.timeout.connect(self.update_frequency_display)
+        self.frequency_timer.start(100)
+
     def start_spectrum_analyzer(self):
         self.spectrum_analyzer = spectrum_analyzer()
-        spectrum_widget = self.spectrum_analyzer._qtgui_sink_x_0_win
+        spectrum_widget = self.spectrum_analyzer
         spectrum_layout = self.spectrum_analyzer_widget.layout()
         if not spectrum_layout:
-            # Create a layout if one doesn't exist
             spectrum_layout = QVBoxLayout(self.spectrum_analyzer_widget)
-        # Add the spectrum analyzer's widget to the layout
         spectrum_layout.addWidget(spectrum_widget)
-
-        # Start the GNU Radio flowgraph
         self.spectrum_analyzer.start()
+
+    def update_frequency_display(self):
+        current_frequency = self.spectrum_analyzer.get_frequency()
+        self.frequency_display.setText(f"Frequency: {current_frequency / 1e6:.3f} MHz")
+
+    def set_frequency_input(self):
+        frequency_text = self.frequency_lineinput.text()
+        try:
+            # Convert the input text to a float value (assuming MHz input)
+            new_frequency = float(frequency_text) * 1e6  # Convert MHz to Hz
+
+            # Set the new frequency in the GNU Radio flowgraph
+            self.spectrum_analyzer.set_frequency(new_frequency)
+
+            # Update the QLabel immediately
+            self.frequency_label.setText(f"Frequency: {new_frequency / 1e6:.3f} MHz")
+
+        except ValueError:
+            # Handle invalid input (non-numeric values)
+            print("Invalid frequency input. Please enter a valid number.")        
 
     def closeEvent(self, event):
         # Properly stop the GNU Radio flowgraph when closing the window
